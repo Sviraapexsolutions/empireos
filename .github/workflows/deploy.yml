@@ -112,13 +112,18 @@ jobs:
           cd android
           chmod +x gradlew
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
-            # Strip spaces/newlines that sneak in when pasting the secret
-            printf '%s' "$KEYSTORE_BASE64" | tr -d ' \r\n\t' | base64 -d > release.jks
-            KEYSTORE_PASSWORD=$(printf '%s' "$KEYSTORE_PASSWORD" | tr -d '\r\n')
-            export KEYSTORE_PASSWORD
-            keytool -list -keystore release.jks -storepass "$KEYSTORE_PASSWORD" >/dev/null \
-              || { echo "::error::Signing secrets are wrong - re-paste ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD"; exit 1; }
+          # The keystore is stored encrypted in the repo; only the password secret is needed.
+          # Accept the password from either secret (whichever is short) in case they were swapped.
+          PW=""
+          for c in "$KEYSTORE_PASSWORD" "$KEYSTORE_BASE64"; do
+            c=$(printf '%s' "$c" | tr -d ' \r\n\t')
+            if [ -n "$c" ] && [ ${#c} -lt 200 ]; then PW="$c"; break; fi
+          done
+          if [ -n "$PW" ]; then
+            export KEYSTORE_PASSWORD="$PW"
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in ../android-overrides/release.jks.enc \
+              -out release.jks -pass env:KEYSTORE_PASSWORD \
+              || { echo "::error::ANDROID_KEYSTORE_PASSWORD is wrong - paste the contents of ANDROID_KEYSTORE_PASSWORD.txt"; exit 1; }
             ./gradlew --no-daemon assembleRelease
             "$BT/zipalign" -p -f 4 app/build/outputs/apk/release/app-release-unsigned.apk aligned.apk
             "$BT/apksigner" sign --ks release.jks --ks-key-alias empireos \
