@@ -164,7 +164,7 @@ export function VenturesTab({
                 <button
                   type="button"
                   onClick={() => toggleBiz(biz.id)}
-                  className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
+                  className="flex items-center gap-3 min-w-0 flex-1 basis-full sm:basis-0 text-left cursor-pointer"
                 >
                   {expanded ? (
                     <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
@@ -192,7 +192,7 @@ export function VenturesTab({
                   </div>
                 </button>
 
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-0">
                   <button
                     type="button"
                     onClick={() => onAddProject(biz.id)}
@@ -275,7 +275,7 @@ export function VenturesTab({
                             <button
                               type="button"
                               onClick={() => toggleProj(proj.id)}
-                              className="flex-1 min-w-0 text-left space-y-2 cursor-pointer"
+                              className="flex-1 basis-full sm:basis-0 min-w-0 text-left space-y-2 cursor-pointer"
                             >
                               <div className="flex items-center gap-2">
                                 {projExpanded ? (
@@ -331,7 +331,7 @@ export function VenturesTab({
                               </div>
                             </button>
 
-                            <div className="flex items-center gap-1 shrink-0">
+                            <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
                               <button
                                 type="button"
                                 onClick={() =>

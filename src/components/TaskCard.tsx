@@ -152,10 +152,12 @@ export function TaskCard({
                     triggerHaptic(12);
                     onLockIn(task);
                   }}
+                  aria-label="Lock In"
+                  title="Lock In"
                   className="min-h-[34px] px-2.5 rounded-lg bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-800 border border-slate-200/80 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <Target className="w-3.5 h-3.5" />
-                  <span>Lock In</span>
+                  <span className="hidden sm:inline">Lock In</span>
                 </button>
               )}
 
