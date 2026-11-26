@@ -69,7 +69,7 @@ jobs:
         with:
           node-version: 22
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -100,6 +100,7 @@ jobs:
           cp -r android-res/* "$RES"/
           # Plain background instead of the default Capacitor splash logo
           sed -i 's#@drawable/splash#@color/ic_launcher_background#g' "$RES/values/styles.xml"
+          cp android-overrides/MainActivity.java android/app/src/main/java/com/smgroup/empireos/MainActivity.java
           sed -i -E "s/versionCode [0-9]+/versionCode ${GITHUB_RUN_NUMBER}/" android/app/build.gradle
           sed -i -E "s/versionName \"[^\"]+\"/versionName \"${APP_VERSION}\"/" android/app/build.gradle
 
@@ -112,7 +113,12 @@ jobs:
           chmod +x gradlew
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > release.jks
+            # Strip spaces/newlines that sneak in when pasting the secret
+            printf '%s' "$KEYSTORE_BASE64" | tr -d ' \r\n\t' | base64 -d > release.jks
+            KEYSTORE_PASSWORD=$(printf '%s' "$KEYSTORE_PASSWORD" | tr -d '\r\n')
+            export KEYSTORE_PASSWORD
+            keytool -list -keystore release.jks -storepass "$KEYSTORE_PASSWORD" >/dev/null \
+              || { echo "::error::Signing secrets are wrong - re-paste ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD"; exit 1; }
             ./gradlew --no-daemon assembleRelease
             "$BT/zipalign" -p -f 4 app/build/outputs/apk/release/app-release-unsigned.apk aligned.apk
             "$BT/apksigner" sign --ks release.jks --ks-key-alias empireos \
