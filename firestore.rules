@@ -1,0 +1,404 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 1 / Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Primitives ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isOptionalId(id) {
+      return id is string && (id == '' || isValidId(id));
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedOwner(userId) {
+      return isSignedIn()
+        && request.auth.uid == userId
+        && request.auth.token.email_verified == true;
+    }
+
+    // --- Entity Validation Blueprints (Synchronized verbatim with firebase-blueprint.json) ---
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'seeded',
+          'morningBriefingEnabled', 'middayStallAlertEnabled', 'nightAuditEnabled',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'username', 'bio', 'avatarFileId', 'aiProvider', 'seeded',
+          'morningBriefingEnabled', 'middayStallAlertEnabled', 'nightAuditEnabled',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && data.displayName is string && data.displayName.size() <= 100
+        && (!('username' in data) || (data.username is string && data.username.size() <= 40 && data.username.matches('^(|[a-zA-Z0-9_.\\-]+)$')))
+        && (!('bio' in data) || (data.bio is string && data.bio.size() <= 240))
+        && (!('avatarFileId' in data) || isOptionalId(data.avatarFileId))
+        && (!('aiProvider' in data) || (data.aiProvider is string && data.aiProvider.size() <= 16 && data.aiProvider in ['gemini', 'claude']))
+        && data.seeded is bool
+        && data.morningBriefingEnabled is bool
+        && data.middayStallAlertEnabled is bool
+        && data.nightAuditEnabled is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBusiness(data) {
+      return data.keys().hasAll([
+          'uid', 'name', 'colorHex', 'icon', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'name', 'colorHex', 'icon', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && data.colorHex is string && data.colorHex.size() == 7 && data.colorHex.matches('^#[0-9A-Fa-f]{6}$')
+        && data.icon is string && data.icon.size() >= 1 && data.icon.size() <= 32
+        && data.icon in ['fuel', 'megaphone', 'cpu', 'building', 'store', 'user', 'briefcase', 'shield', 'globe', 'zap']
+        && data.isActive is bool
+        && data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 10000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidProject(data) {
+      return data.keys().hasAll([
+          'uid', 'businessId', 'name', 'phaseHeadings', 'targetDate', 'isArchived', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'businessId', 'name', 'phaseHeadings', 'targetDate', 'isArchived', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && isValidId(data.businessId)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && data.phaseHeadings is list && data.phaseHeadings.size() <= 20
+        && (data.phaseHeadings.size() == 0 || (data.phaseHeadings[0] is string && data.phaseHeadings[0].size() <= 80))
+        && data.targetDate is string && data.targetDate.size() <= 10
+        && data.targetDate.matches('^(|[0-9]{4}-[0-9]{2}-[0-9]{2})$')
+        && data.isArchived is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll([
+          'uid', 'title', 'businessId', 'projectId', 'phaseHeading',
+          'scheduledDate', 'scheduledTime', 'hardDeadline',
+          'priority', 'isMilestone', 'blockedByTaskId',
+          'isHabit', 'recurrenceRule', 'streakCount',
+          'status', 'completedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'title', 'businessId', 'projectId', 'phaseHeading',
+          'scheduledDate', 'scheduledTime', 'hardDeadline',
+          'priority', 'isMilestone', 'blockedByTaskId',
+          'isHabit', 'recurrenceRule', 'streakCount',
+          'status', 'completedAt', 'attachmentIds', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && isValidId(data.businessId)
+        && isOptionalId(data.projectId)
+        && data.phaseHeading is string && data.phaseHeading.size() <= 80
+        && data.scheduledDate is string && data.scheduledDate.size() == 10
+        && data.scheduledDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.scheduledTime is string && data.scheduledTime.size() <= 5
+        && data.scheduledTime.matches('^(|[0-2][0-9]:[0-5][0-9])$')
+        && data.hardDeadline is string && data.hardDeadline.size() <= 10
+        && data.hardDeadline.matches('^(|[0-9]{4}-[0-9]{2}-[0-9]{2})$')
+        && data.priority is string && data.priority.size() <= 16
+        && data.priority in ['high', 'standard']
+        && data.isMilestone is bool
+        && isOptionalId(data.blockedByTaskId)
+        && data.isHabit is bool
+        && data.recurrenceRule is string && data.recurrenceRule.size() <= 16
+        && data.recurrenceRule in ['none', 'daily', 'weekdays', 'weekly']
+        && data.streakCount is int && data.streakCount >= 0 && data.streakCount <= 100000
+        && data.status is string && data.status.size() <= 16
+        && data.status in ['pending', 'done', 'missed']
+        && data.completedAt is string && data.completedAt.size() <= 40
+        && (!('attachmentIds' in data) || (
+          data.attachmentIds is list
+          && data.attachmentIds.size() <= 10
+          && (data.attachmentIds.size() == 0 || isValidId(data.attachmentIds[0]))
+        ))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidHabit(data) {
+      return data.keys().hasAll([
+          'uid', 'title', 'businessId', 'scheduledTime', 'recurrenceRule',
+          'streakCount', 'completedDates', 'isActive', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'title', 'businessId', 'scheduledTime', 'recurrenceRule',
+          'streakCount', 'completedDates', 'isActive', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
+        && isValidId(data.businessId)
+        && data.scheduledTime is string && data.scheduledTime.size() <= 5
+        && data.scheduledTime.matches('^(|[0-2][0-9]:[0-5][0-9])$')
+        && data.recurrenceRule is string && data.recurrenceRule.size() <= 16
+        && data.recurrenceRule in ['daily', 'weekdays', 'weekly']
+        && data.streakCount is int && data.streakCount >= 0 && data.streakCount <= 100000
+        && data.completedDates is list && data.completedDates.size() <= 366
+        && (data.completedDates.size() == 0 || (data.completedDates[0] is string && data.completedDates[0].size() == 10))
+        && data.isActive is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTaskFile(data) {
+      return data.keys().hasAll([
+          'uid', 'name', 'mimeType', 'kind', 'sizeBytes', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'name', 'mimeType', 'kind', 'sizeBytes', 'createdAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 160
+        && data.mimeType is string && data.mimeType.size() >= 1 && data.mimeType.size() <= 80
+        && data.kind is string && data.kind.size() <= 16 && data.kind in ['pdf', 'image', 'file']
+        && data.sizeBytes is int && data.sizeBytes >= 0 && data.sizeBytes <= 20000000
+        && data.createdAt is timestamp;
+    }
+
+    function isValidCoachLog(data) {
+      return data.keys().hasAll([
+          'uid', 'taskId', 'taskTitle', 'businessName', 'triggerReason',
+          'completionPercent', 'wakeUpCall', 'quote', 'quoteAuthor', 'tacticalBreakdown', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'taskId', 'taskTitle', 'businessName', 'triggerReason',
+          'completionPercent', 'wakeUpCall', 'quote', 'quoteAuthor', 'tacticalBreakdown', 'createdAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && isOptionalId(data.taskId)
+        && data.taskTitle is string && data.taskTitle.size() >= 1 && data.taskTitle.size() <= 200
+        && data.businessName is string && data.businessName.size() >= 1 && data.businessName.size() <= 80
+        && data.triggerReason is string && data.triggerReason.size() <= 24
+        && data.triggerReason in ['overdue', 'rescheduled', 'missed', 'manual']
+        && data.completionPercent is int && data.completionPercent >= 0 && data.completionPercent <= 100
+        && data.wakeUpCall is string && data.wakeUpCall.size() >= 1 && data.wakeUpCall.size() <= 1000
+        && data.quote is string && data.quote.size() >= 1 && data.quote.size() <= 600
+        && data.quoteAuthor is string && data.quoteAuthor.size() >= 1 && data.quoteAuthor.size() <= 120
+        && data.tacticalBreakdown is string && data.tacticalBreakdown.size() >= 1 && data.tacticalBreakdown.size() <= 1200
+        && data.createdAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+    match /users/{userId} {
+      allow get: if isVerifiedOwner(userId) && isValidId(userId);
+      allow list: if false;
+      allow create: if isVerifiedOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerifiedOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action: Mark seeded
+          incoming().diff(existing()).affectedKeys().hasOnly(['seeded', 'updatedAt']) ||
+          // Action: Update notification preferences
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'morningBriefingEnabled', 'middayStallAlertEnabled', 'nightAuditEnabled', 'updatedAt'
+          ]) ||
+          // Action: Update profile details, avatar, and AI provider settings
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'username', 'bio', 'avatarFileId', 'aiProvider', 'updatedAt'
+          ])
+        );
+      allow delete: if false;
+
+      // Tier 1: Businesses
+      match /businesses/{businessId} {
+        allow get: if isVerifiedOwner(userId) && isValidId(userId) && isValidId(businessId);
+        allow list: if isVerifiedOwner(userId) && resource.data.uid == request.auth.uid;
+        allow create: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(businessId)
+          && isValidBusiness(incoming())
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(businessId)
+          && isValidBusiness(incoming())
+          && incoming().uid == existing().uid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            // Action: Edit venture metadata
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'colorHex', 'icon', 'sortOrder', 'updatedAt']) ||
+            // Action: Archive/activate venture
+            incoming().diff(existing()).affectedKeys().hasOnly(['isActive', 'updatedAt'])
+          );
+        allow delete: if isVerifiedOwner(userId) && isValidId(userId) && isValidId(businessId);
+      }
+
+      // Tier 2: Projects
+      match /projects/{projectId} {
+        allow get: if isVerifiedOwner(userId) && isValidId(userId) && isValidId(projectId);
+        allow list: if isVerifiedOwner(userId) && resource.data.uid == request.auth.uid;
+        allow create: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(projectId)
+          && isValidProject(incoming())
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && existsAfter(/databases/$(database)/documents/users/$(userId)/businesses/$(incoming().businessId));
+        allow update: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(projectId)
+          && isValidProject(incoming())
+          && incoming().uid == existing().uid
+          && incoming().businessId == existing().businessId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            // Action: Edit project details and phase headings
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phaseHeadings', 'targetDate', 'updatedAt']) ||
+            // Action: Archive/unarchive project
+            incoming().diff(existing()).affectedKeys().hasOnly(['isArchived', 'updatedAt'])
+          );
+        allow delete: if isVerifiedOwner(userId) && isValidId(userId) && isValidId(projectId);
+      }
+
+      // Tier 3: Tasks
+      match /tasks/{taskId} {
+        allow get: if isVerifiedOwner(userId) && isValidId(userId) && isValidId(taskId);
+        allow list: if isVerifiedOwner(userId) && resource.data.uid == request.auth.uid;
+        allow create: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(taskId)
+          && isValidTask(incoming())
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && existsAfter(/databases/$(database)/documents/users/$(userId)/businesses/$(incoming().businessId))
+          && (
+            incoming().projectId == ''
+            || existsAfter(/databases/$(database)/documents/users/$(userId)/projects/$(incoming().projectId))
+          );
+        allow update: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(taskId)
+          && isValidTask(incoming())
+          && incoming().uid == existing().uid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            // Action: Toggle completion / missed status
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'completedAt', 'streakCount', 'updatedAt']) ||
+            // Action: Reschedule task date/time
+            incoming().diff(existing()).affectedKeys().hasOnly(['scheduledDate', 'scheduledTime', 'status', 'updatedAt']) ||
+            // Action: Update attachments only
+            incoming().diff(existing()).affectedKeys().hasOnly(['attachmentIds', 'updatedAt']) ||
+            // Action: Unlink deleted project
+            incoming().diff(existing()).affectedKeys().hasOnly(['projectId', 'phaseHeading', 'updatedAt']) ||
+            // Action: Edit full task details (with relational parent verification)
+            (
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'title', 'businessId', 'projectId', 'phaseHeading',
+                'scheduledDate', 'scheduledTime', 'hardDeadline',
+                'priority', 'isMilestone', 'blockedByTaskId',
+                'isHabit', 'recurrenceRule', 'attachmentIds', 'updatedAt'
+              ])
+              && exists(/databases/$(database)/documents/users/$(userId)/businesses/$(incoming().businessId))
+              && (
+                incoming().projectId == ''
+                || exists(/databases/$(database)/documents/users/$(userId)/projects/$(incoming().projectId))
+              )
+            )
+          );
+        allow delete: if isVerifiedOwner(userId) && isValidId(userId) && isValidId(taskId);
+      }
+
+      // Daily Recurring Habits
+      match /habits/{habitId} {
+        allow get: if isVerifiedOwner(userId) && isValidId(userId) && isValidId(habitId);
+        allow list: if isVerifiedOwner(userId) && resource.data.uid == request.auth.uid;
+        allow create: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(habitId)
+          && isValidHabit(incoming())
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && existsAfter(/databases/$(database)/documents/users/$(userId)/businesses/$(incoming().businessId));
+        allow update: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(habitId)
+          && isValidHabit(incoming())
+          && incoming().uid == existing().uid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            // Action: Toggle daily habit check-off & streak
+            incoming().diff(existing()).affectedKeys().hasOnly(['completedDates', 'streakCount', 'updatedAt']) ||
+            // Action: Edit habit definition (with relational parent verification)
+            (
+              incoming().diff(existing()).affectedKeys().hasOnly(['title', 'businessId', 'scheduledTime', 'recurrenceRule', 'isActive', 'updatedAt'])
+              && exists(/databases/$(database)/documents/users/$(userId)/businesses/$(incoming().businessId))
+            )
+          );
+        allow delete: if isVerifiedOwner(userId) && isValidId(userId) && isValidId(habitId);
+      }
+
+      // Reusable Task File Library Metadata (PDFs, Photos)
+      match /files/{fileId} {
+        allow get: if isVerifiedOwner(userId) && isValidId(userId) && isValidId(fileId);
+        allow list: if isVerifiedOwner(userId) && resource.data.uid == request.auth.uid;
+        allow create: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(fileId)
+          && isValidTaskFile(incoming())
+          && incoming().createdAt == request.time;
+        allow update: if false;
+        allow delete: if isVerifiedOwner(userId) && isValidId(userId) && isValidId(fileId);
+      }
+
+      // Immutable AI Accountability Logs
+      match /coachLogs/{logId} {
+        allow get: if isVerifiedOwner(userId) && isValidId(userId) && isValidId(logId);
+        allow list: if isVerifiedOwner(userId) && resource.data.uid == request.auth.uid;
+        allow create: if isVerifiedOwner(userId)
+          && isValidId(userId)
+          && isValidId(logId)
+          && isValidCoachLog(incoming())
+          && incoming().createdAt == request.time;
+        allow update: if false;
+        allow delete: if isVerifiedOwner(userId) && isValidId(userId) && isValidId(logId);
+      }
+    }
+  }
+}

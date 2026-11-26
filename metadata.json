@@ -1,0 +1,8 @@
+{
+  "name": "EmpireOS",
+  "description": "Dark-first executive personal execution, multi-venture project management, habit tracking, and AI accountability platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

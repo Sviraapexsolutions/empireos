@@ -1,0 +1,453 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Root user configuration document storing onboarding seed status, profile customization, AI provider preference, and notification preferences. Strictly isolated to owner.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "username": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 40,
+          "pattern": "^(|[a-zA-Z0-9_.\\-]+)$"
+        },
+        "bio": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 240
+        },
+        "avatarFileId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(|[a-zA-Z0-9_\\-]+)$"
+        },
+        "aiProvider": {
+          "type": "string",
+          "enum": ["gemini", "claude"]
+        },
+        "seeded": {
+          "type": "boolean"
+        },
+        "morningBriefingEnabled": {
+          "type": "boolean"
+        },
+        "middayStallAlertEnabled": {
+          "type": "boolean"
+        },
+        "nightAuditEnabled": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "seeded", "morningBriefingEnabled", "middayStallAlertEnabled", "nightAuditEnabled", "createdAt", "updatedAt"]
+    },
+    "Business": {
+      "title": "Business",
+      "description": "Tier 1 Venture/Business owned by a user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "colorHex": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "icon": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "enum": ["fuel", "megaphone", "cpu", "building", "store", "user", "briefcase", "shield", "globe", "zap"]
+        },
+        "isActive": {
+          "type": "boolean"
+        },
+        "sortOrder": {
+          "type": "integer"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "name", "colorHex", "icon", "isActive", "sortOrder", "createdAt", "updatedAt"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Tier 2 Project belonging strictly to one Business with optional Phase Headings and target date.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "businessId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "phaseHeadings": {
+          "type": "array",
+          "description": "Ordered list of phase headings (max 20 items, e.g., Civil Work, Setup, Launch)."
+        },
+        "targetDate": {
+          "type": "string",
+          "maxLength": 10,
+          "pattern": "^(|[0-9]{4}-[0-9]{2}-[0-9]{2})$"
+        },
+        "isArchived": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "businessId", "name", "phaseHeadings", "targetDate", "isArchived", "createdAt", "updatedAt"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Tier 3 actionable Task or recurring execution item with optional attached file references.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "businessId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "projectId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(|[a-zA-Z0-9_\\-]+)$"
+        },
+        "phaseHeading": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "scheduledDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "scheduledTime": {
+          "type": "string",
+          "maxLength": 5,
+          "pattern": "^(|[0-2][0-9]:[0-5][0-9])$"
+        },
+        "hardDeadline": {
+          "type": "string",
+          "maxLength": 10,
+          "pattern": "^(|[0-9]{4}-[0-9]{2}-[0-9]{2})$"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["high", "standard"]
+        },
+        "isMilestone": {
+          "type": "boolean"
+        },
+        "blockedByTaskId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(|[a-zA-Z0-9_\\-]+)$"
+        },
+        "isHabit": {
+          "type": "boolean"
+        },
+        "recurrenceRule": {
+          "type": "string",
+          "enum": ["none", "daily", "weekdays", "weekly"]
+        },
+        "streakCount": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "done", "missed"]
+        },
+        "completedAt": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "attachmentIds": {
+          "type": "array",
+          "description": "Bounded list (max 10) of file IDs referencing /users/{uid}/files/{fileId}."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "title",
+        "businessId",
+        "projectId",
+        "phaseHeading",
+        "scheduledDate",
+        "scheduledTime",
+        "hardDeadline",
+        "priority",
+        "isMilestone",
+        "blockedByTaskId",
+        "isHabit",
+        "recurrenceRule",
+        "streakCount",
+        "status",
+        "completedAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Habit": {
+      "title": "Habit",
+      "description": "Recurring daily/weekday/weekly habit with streak counter and completion date history.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "businessId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "scheduledTime": {
+          "type": "string",
+          "maxLength": 5,
+          "pattern": "^(|[0-2][0-9]:[0-5][0-9])$"
+        },
+        "recurrenceRule": {
+          "type": "string",
+          "enum": ["daily", "weekdays", "weekly"]
+        },
+        "streakCount": {
+          "type": "integer"
+        },
+        "completedDates": {
+          "type": "array",
+          "description": "Array of YYYY-MM-DD completion strings (max 366)."
+        },
+        "isActive": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "title", "businessId", "scheduledTime", "recurrenceRule", "streakCount", "completedDates", "isActive", "createdAt", "updatedAt"]
+    },
+    "TaskFile": {
+      "title": "TaskFile",
+      "description": "Lightweight metadata for PDFs and photos stored in the user's reusable file library (binary data stored in local/server vault, never in Firestore).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "mimeType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["pdf", "image", "file"]
+        },
+        "sizeBytes": {
+          "type": "integer"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "name", "mimeType", "kind", "sizeBytes", "createdAt"]
+    },
+    "CoachLog": {
+      "title": "CoachLog",
+      "description": "Immutable AI Accountability Reality Check card generated by Gemini or Claude.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "taskId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(|[a-zA-Z0-9_\\-]+)$"
+        },
+        "taskTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "businessName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "triggerReason": {
+          "type": "string",
+          "enum": ["overdue", "rescheduled", "missed", "manual"]
+        },
+        "completionPercent": {
+          "type": "integer"
+        },
+        "wakeUpCall": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "quoteAuthor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "tacticalBreakdown": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1200
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "taskId",
+        "taskTitle",
+        "businessName",
+        "triggerReason",
+        "completionPercent",
+        "wakeUpCall",
+        "quote",
+        "quoteAuthor",
+        "tacticalBreakdown",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Owner-isolated root user configuration, profile metadata, AI provider preference, and seeding state."
+    },
+    "/users/{userId}/businesses/{businessId}": {
+      "schema": { "$ref": "#/entities/Business" },
+      "description": "User-scoped Tier 1 Businesses."
+    },
+    "/users/{userId}/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "User-scoped Tier 2 Projects linked to a Business."
+    },
+    "/users/{userId}/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/Task" },
+      "description": "User-scoped Tier 3 Tasks and milestones with optional attachment references."
+    },
+    "/users/{userId}/habits/{habitId}": {
+      "schema": { "$ref": "#/entities/Habit" },
+      "description": "User-scoped recurring daily habits with streak tracking."
+    },
+    "/users/{userId}/files/{fileId}": {
+      "schema": { "$ref": "#/entities/TaskFile" },
+      "description": "User-scoped PDF and photo metadata for reusable task attachments."
+    },
+    "/users/{userId}/coachLogs/{logId}": {
+      "schema": { "$ref": "#/entities/CoachLog" },
+      "description": "Immutable AI Accountability Reality Check logs."
+    }
+  }
+}

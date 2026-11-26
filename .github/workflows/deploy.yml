@@ -1,0 +1,139 @@
+name: Build & Deploy EmpireOS (Web + Android APK)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Build web app & deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Compute URLs
+        run: |
+          OWNER_LC=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          REPO=${GITHUB_REPOSITORY#*/}
+          echo "BASE_PATH=/${REPO}/" >> $GITHUB_ENV
+          echo "VITE_PUBLIC_APP_URL=https://${OWNER_LC}.github.io/${REPO}/" >> $GITHUB_ENV
+          echo "VITE_APK_URL=https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/EmpireOS.apk" >> $GITHUB_ENV
+          echo "VITE_RELEASE_PAGE_URL=https://github.com/${GITHUB_REPOSITORY}/releases/latest" >> $GITHUB_ENV
+          echo "VITE_APP_VERSION=1.0.${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build
+        run: npm run build
+
+      - name: SPA fallback for deep links (/install)
+        run: |
+          cp dist/index.html dist/404.html
+          touch dist/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  android:
+    name: Build Android APK & publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Compute URLs
+        run: |
+          OWNER_LC=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          REPO=${GITHUB_REPOSITORY#*/}
+          echo "BASE_PATH=/${REPO}/" >> $GITHUB_ENV
+          echo "CAP_SERVER_URL=https://${OWNER_LC}.github.io/${REPO}/" >> $GITHUB_ENV
+          echo "APP_VERSION=1.0.${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+
+      - name: Install dependencies & build web bundle
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Generate Android project
+        run: |
+          node scripts/write-capacitor-config.mjs
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+
+      - name: Apply icons, splash colour & version
+        run: |
+          RES=android/app/src/main/res
+          cp -r android-res/* "$RES"/
+          # Plain background instead of the default Capacitor splash logo
+          sed -i 's#@drawable/splash#@color/ic_launcher_background#g' "$RES/values/styles.xml"
+          sed -i -E "s/versionCode [0-9]+/versionCode ${GITHUB_RUN_NUMBER}/" android/app/build.gradle
+          sed -i -E "s/versionName \"[^\"]+\"/versionName \"${APP_VERSION}\"/" android/app/build.gradle
+
+      - name: Build & sign APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          cd android
+          chmod +x gradlew
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > release.jks
+            ./gradlew --no-daemon assembleRelease
+            "$BT/zipalign" -p -f 4 app/build/outputs/apk/release/app-release-unsigned.apk aligned.apk
+            "$BT/apksigner" sign --ks release.jks --ks-key-alias empireos \
+              --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEYSTORE_PASSWORD \
+              --out ../EmpireOS.apk aligned.apk
+            rm -f release.jks
+          else
+            echo "::warning::No signing secrets set - building a debug APK (updates will need uninstall/reinstall)."
+            ./gradlew --no-daemon assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk ../EmpireOS.apk
+          fi
+          ls -la ../EmpireOS.apk
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.APP_VERSION }}
+          name: EmpireOS ${{ env.APP_VERSION }}
+          make_latest: 'true'
+          body: |
+            Android APK for EmpireOS (build ${{ env.APP_VERSION }}).
+            Download **EmpireOS.apk** below and open it on your Android phone.
+            Web app: ${{ env.CAP_SERVER_URL }}
+          files: EmpireOS.apk
