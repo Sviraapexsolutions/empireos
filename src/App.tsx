@@ -79,6 +79,7 @@ import { formatReadableDate, getCurrentHHmm, getTodayKey, triggerHaptic } from '
 import { loadFileObjectUrl } from './utils/fileVault';
 import type { ParsedQuickAdd } from './utils/nlParser';
 import { appPath, isInstallPath } from './config/appConfig';
+import { AuthActionPage, getAuthActionParams } from './components/AuthActionPage';
 
 const SIDEBAR_TABS: Array<{
   id: TabId;
@@ -1017,6 +1018,7 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [verifyTick, setVerifyTick] = useState(0);
   const [preferredTab, setPreferredTab] = useState<TabId>('dashboard');
+  const [authAction, setAuthAction] = useState(() => getAuthActionParams());
   const [showInstallPage, setShowInstallPage] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return isInstallPath(window.location.pathname);
@@ -1057,7 +1059,16 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      {showInstallPage ? (
+      {authAction ? (
+        <AuthActionPage
+          mode={authAction.mode}
+          oobCode={authAction.oobCode}
+          onDone={() => {
+            setAuthAction(null);
+            setVerifyTick((t) => t + 1);
+          }}
+        />
+      ) : showInstallPage ? (
         <InstallReleasePage
           isSignedIn={isSignedInVerified}
           onBackToApp={() => closeInstallPage()}
