@@ -23,6 +23,12 @@ const config = {
     appendUserAgent: 'EmpireOSAndroid',
     backgroundColor: '#F7F8FA',
   },
+  plugins: {
+    LocalNotifications: {
+      smallIcon: 'ic_stat_empireos',
+      iconColor: '#C8902E',
+    },
+  },
 };
 
 writeFileSync('capacitor.config.json', JSON.stringify(config, null, 2) + '\n');

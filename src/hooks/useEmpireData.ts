@@ -14,6 +14,8 @@ import type {
   UserProfile,
 } from '../types/empire';
 import { getCurrentHHmm, getTodayKey } from '../utils/dateUtils';
+import { isNativeApp } from '../config/appConfig';
+import { showNotificationNow, syncScheduledNotifications } from '../services/notifications';
 
 export interface EmpireDataState {
   profile: UserProfile | null;
@@ -34,14 +36,10 @@ export interface EmpireDataState {
 }
 
 function fireBrowserNotification(title: string, body: string): void {
-  if (typeof window === 'undefined' || !('Notification' in window)) return;
-  if (Notification.permission === 'granted') {
-    try {
-      new Notification(title, { body, tag: `empireos-${title}` });
-    } catch {
-      // Ignore if blocked in iframe context
-    }
-  }
+  // In the Android APK, reminders are pre-scheduled on the device (see syncScheduledNotifications),
+  // so only the web / iPhone app shows them live here.
+  if (isNativeApp()) return;
+  void showNotificationNow(title, body);
 }
 
 export function useEmpireData(
@@ -282,6 +280,19 @@ export function useEmpireData(
     const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
     return { completed, total, percent };
   }, [tasks, blockedTaskIds]);
+
+  // Android: keep on-device scheduled reminders in sync with tasks & alert preferences
+  useEffect(() => {
+    if (!user || !user.emailVerified || loading) return;
+    const handle = window.setTimeout(() => {
+      void syncScheduledNotifications(tasks, blockedTaskIds, {
+        morningBriefingEnabled: profile?.morningBriefingEnabled ?? true,
+        middayStallAlertEnabled: profile?.middayStallAlertEnabled ?? true,
+        nightAuditEnabled: profile?.nightAuditEnabled ?? true,
+      });
+    }, 1500);
+    return () => window.clearTimeout(handle);
+  }, [user, loading, tasks, blockedTaskIds, profile]);
 
   // Reliable Cadence Scheduler (Exact task reminders, 08:00 Briefing, 14:00 Stall Alert, 21:30 Night Audit)
   useEffect(() => {

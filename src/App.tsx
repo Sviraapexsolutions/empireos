@@ -79,6 +79,7 @@ import { formatReadableDate, getCurrentHHmm, getTodayKey, triggerHaptic } from '
 import { loadFileObjectUrl } from './utils/fileVault';
 import type { ParsedQuickAdd } from './utils/nlParser';
 import { appPath, isInstallPath } from './config/appConfig';
+import { showNotificationNow } from './services/notifications';
 import { AuthActionPage, getAuthActionParams } from './components/AuthActionPage';
 
 const SIDEBAR_TABS: Array<{
@@ -439,6 +440,7 @@ function EmpireWorkspace({
         timestamp: nowHHmm,
       });
     }
+    void showNotificationNow('EmpireOS test alert', 'Notifications are working on this device.');
     setNotifModalOpen(false);
   };
 

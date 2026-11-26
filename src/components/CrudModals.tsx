@@ -1,5 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  showNotificationNow,
+} from '../services/notifications';
+import {
   Bell,
   BellRing,
   Camera,
@@ -1133,9 +1138,7 @@ export function NotificationsModal({
   const [morning, setMorning] = useState(true);
   const [midday, setMidday] = useState(true);
   const [night, setNight] = useState(true);
-  const [perm, setPerm] = useState<string>(
-    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported'
-  );
+  const [perm, setPerm] = useState<string>('default');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -1143,20 +1146,16 @@ export function NotificationsModal({
     setMorning(profile?.morningBriefingEnabled ?? true);
     setMidday(profile?.middayStallAlertEnabled ?? true);
     setNight(profile?.nightAuditEnabled ?? true);
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setPerm(Notification.permission);
-    }
+    void getNotificationPermission().then(setPerm);
   }, [open, profile]);
 
   if (!open) return null;
 
   const requestBrowserPermission = async () => {
-    if (typeof window === 'undefined' || !('Notification' in window)) return;
-    try {
-      const result = await Notification.requestPermission();
-      setPerm(result);
-    } catch {
-      setPerm('denied');
+    const result = await requestNotificationPermission();
+    setPerm(result);
+    if (result === 'granted') {
+      void showNotificationNow('EmpireOS notifications on', 'You will get task reminders and daily briefings here.');
     }
   };
 
@@ -1189,8 +1188,10 @@ export function NotificationsModal({
                 {perm === 'granted'
                   ? 'Enabled for exact task reminders and daily briefings.'
                   : perm === 'denied'
-                    ? 'Blocked by browser settings. In-app executive banners remain active.'
-                    : 'Allow OS notifications for exact reminder times and briefings.'}
+                    ? 'Blocked. Turn notifications on for EmpireOS in your phone Settings. In-app banners remain active.'
+                    : perm === 'unsupported'
+                      ? 'On iPhone, add EmpireOS to your Home Screen first, then open it from there to enable notifications.'
+                      : 'Allow notifications for exact reminder times and briefings.'}
               </p>
             </div>
           </div>
