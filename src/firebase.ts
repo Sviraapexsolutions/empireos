@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, sendPasswordResetEmail } from 'firebase/auth';
 import {
   doc,
   getDocFromServer,
@@ -89,3 +89,22 @@ async function testConnection() {
 }
 
 void testConnection();
+
+/**
+ * Sends Firebase's password-reset email. The link opens a secure Firebase page where the
+ * user sets a new password (works outside the app), then offers a "Continue" button back
+ * to EmpireOS. Falls back to a plain reset email if the app domain isn't authorized yet.
+ */
+export async function sendResetLink(email: string): Promise<void> {
+  const continueUrl = `${window.location.origin}${import.meta.env.BASE_URL || '/'}`;
+  try {
+    await sendPasswordResetEmail(auth, email, { url: continueUrl });
+  } catch (err) {
+    const code = (err as { code?: string })?.code || '';
+    if (code === 'auth/unauthorized-continue-uri' || code === 'auth/invalid-continue-uri') {
+      await sendPasswordResetEmail(auth, email);
+      return;
+    }
+    throw err;
+  }
+}

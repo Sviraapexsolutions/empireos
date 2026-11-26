@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
-  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -10,7 +9,7 @@ import {
   type User,
 } from 'firebase/auth';
 import { ArrowRight, CheckCircle2, KeyRound, Mail, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react';
-import { auth, googleProvider } from '../firebase';
+import { auth, googleProvider, sendResetLink } from '../firebase';
 import { isNativeApp, isStandalonePwa } from '../config/appConfig';
 
 type AuthMode = 'login' | 'signup' | 'reset';
@@ -74,8 +73,10 @@ export function AuthScreen({
           setBusy(false);
           return;
         }
-        await sendPasswordResetEmail(auth, trimmedEmail);
-        setInfo('Password reset email dispatched. Check your inbox.');
+        await sendResetLink(trimmedEmail);
+        setInfo(
+          'Reset link sent. Open the email (check Spam too), set your new password on the secure page, then come back and sign in.'
+        );
       } else if (mode === 'signup') {
         if (password.length < 6) {
           setError('Password must be at least 6 characters.');

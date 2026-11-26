@@ -3,7 +3,6 @@ import {
   EmailAuthProvider,
   linkWithPopup,
   reauthenticateWithCredential,
-  sendPasswordResetEmail,
   signOut,
   updatePassword,
   updateProfile,
@@ -43,7 +42,7 @@ import {
   setCoachModel,
   type ProviderAvailability,
 } from '../services/aiCoach';
-import { auth, googleProvider } from '../firebase';
+import { auth, googleProvider, sendResetLink } from '../firebase';
 import type {
   AiProvider,
   Business,
@@ -403,9 +402,11 @@ export function SettingsTab({
     setPwMessage('');
     setPwBusy(true);
     try {
-      await sendPasswordResetEmail(auth, user.email);
+      await sendResetLink(user.email);
       setResetSent(true);
-      setPwMessage(`Password reset link sent to ${user.email}.`);
+      setPwMessage(
+        `Reset link sent to ${user.email}. Open it (check Spam too), set your new password on the secure page, then sign in again.`
+      );
     } catch (err) {
       setPwError(err instanceof Error ? err.message : 'Failed to send reset email.');
     } finally {
