@@ -10,6 +10,8 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { AiProvider, Business, CoachLog, Habit, Task } from '../types/empire';
+import { LifetimeKpisPanel } from './LifetimeKpisPanel';
+import { getCoachModel } from '../services/aiCoach';
 import {
   formatTime12h,
   getLast7DateKeys,
@@ -51,7 +53,7 @@ export function HabitsCoachTab({
   onTriggerRealityCheckForTask,
   onDeleteCoachLog,
 }: HabitsCoachTabProps) {
-  const providerLabel = aiProvider === 'claude' ? 'Claude Sonnet 4' : 'Gemini 4 Hydrogen';
+  const providerLabel = `${aiProvider === 'claude' ? 'Claude' : 'Gemini'} · ${getCoachModel(aiProvider)}`;
   const today = getTodayKey();
   const last7 = useMemo(() => getLast7DateKeys(), []);
   const bizMap = useMemo(() => new Map(businesses.map((b) => [b.id, b])), [businesses]);
@@ -77,6 +79,10 @@ export function HabitsCoachTab({
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+      <div className="xl:col-span-12">
+        <LifetimeKpisPanel tasks={tasks} habits={habits} coachLogs={coachLogs} aiProvider={aiProvider} />
+      </div>
+
       {/* Left Column: Daily Recurring Habit Checklist + 7-Day Dot Matrix */}
       <section className="xl:col-span-6 space-y-4">
         <div className="flex items-center justify-between gap-3">

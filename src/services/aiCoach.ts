@@ -116,7 +116,7 @@ function buildPrompt(input: RealityCheckInput): string {
     .join('\n');
 }
 
-function parseJsonLoose(text: string): Omit<RealityCheckResult, 'provider'> {
+function parseJsonLoose<T = Omit<RealityCheckResult, 'provider'>>(text: string): T {
   const cleaned = text
     .trim()
     .replace(/^```(?:json)?\s*/i, '')
@@ -128,26 +128,29 @@ function parseJsonLoose(text: string): Omit<RealityCheckResult, 'provider'> {
   return JSON.parse(slice);
 }
 
-async function callGemini(apiKey: string, model: string, prompt: string) {
+const RC_KEYS = ['wakeUpCall', 'quote', 'quoteAuthor', 'tacticalBreakdown'];
+
+async function callGemini<T = Omit<RealityCheckResult, 'provider'>>(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  system: string = SYSTEM_INSTRUCTION,
+  keys: string[] = RC_KEYS
+): Promise<T> {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+        systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
           responseMimeType: 'application/json',
           responseSchema: {
             type: 'OBJECT',
-            properties: {
-              wakeUpCall: { type: 'STRING' },
-              quote: { type: 'STRING' },
-              quoteAuthor: { type: 'STRING' },
-              tacticalBreakdown: { type: 'STRING' },
-            },
-            required: ['wakeUpCall', 'quote', 'quoteAuthor', 'tacticalBreakdown'],
+            properties: Object.fromEntries(keys.map((k) => [k, { type: 'STRING' }])),
+            required: keys,
           },
         },
       }),
@@ -162,10 +165,16 @@ async function callGemini(apiKey: string, model: string, prompt: string) {
   };
   const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
   if (!text.trim()) throw new Error('Gemini returned an empty response.');
-  return parseJsonLoose(text);
+  return parseJsonLoose<T>(text);
 }
 
-async function callClaude(apiKey: string, model: string, prompt: string) {
+async function callClaude<T = Omit<RealityCheckResult, 'provider'>>(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  system: string = SYSTEM_INSTRUCTION,
+  keys: string[] = RC_KEYS
+): Promise<T> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -177,7 +186,7 @@ async function callClaude(apiKey: string, model: string, prompt: string) {
     body: JSON.stringify({
       model,
       max_tokens: 700,
-      system: `${SYSTEM_INSTRUCTION} Respond ONLY with a valid JSON object containing exact keys: wakeUpCall, quote, quoteAuthor, tacticalBreakdown. Do not wrap in markdown fences.`,
+      system: `${system} Respond ONLY with a valid JSON object containing exact keys: ${keys.join(', ')}. Do not wrap in markdown fences.`,
       messages: [{ role: 'user', content: prompt }],
     }),
   });
@@ -188,7 +197,7 @@ async function callClaude(apiKey: string, model: string, prompt: string) {
   const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
   const text = data.content?.find((c) => c.type === 'text')?.text || '';
   if (!text.trim()) throw new Error('Claude returned an empty response.');
-  return parseJsonLoose(text);
+  return parseJsonLoose<T>(text);
 }
 
 export async function generateRealityCheck(input: RealityCheckInput): Promise<RealityCheckResult> {
@@ -216,5 +225,69 @@ export async function generateRealityCheck(input: RealityCheckInput): Promise<Re
     quoteAuthor: String(parsed.quoteAuthor).slice(0, 120),
     tacticalBreakdown: String(parsed.tacticalBreakdown).slice(0, 1200),
     provider,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Lifetime performance review (Habits page KPIs)
+// ---------------------------------------------------------------------------
+
+export interface PerformanceReview {
+  title: string;
+  headline: string;
+  motivation: string;
+  strength: string;
+  focus: string;
+  awardName: string;
+  awardReason: string;
+  provider: AiProvider;
+  createdAt: string;
+}
+
+const REVIEW_KEYS = ['title', 'headline', 'motivation', 'strength', 'focus', 'awardName', 'awardReason'];
+
+export async function generatePerformanceReview(
+  provider: AiProvider,
+  stats: Record<string, string | number>
+): Promise<PerformanceReview> {
+  const p: AiProvider = provider === 'claude' ? 'claude' : 'gemini';
+  const apiKey = getCoachApiKey(p);
+  if (!apiKey) {
+    throw new Error(
+      `No ${p === 'claude' ? 'Claude (Anthropic)' : 'Gemini'} API key saved on this device. Add it in Settings → AI Accountability Coach.`
+    );
+  }
+  const system =
+    'You are the EmpireOS Performance Coach for an ambitious Indian founder running multiple ventures. You review lifetime execution KPIs and respond like an elite coach: honest, specific to the numbers, motivating, never generic, never fake praise. Always output valid JSON with the exact keys requested.';
+  const prompt = [
+    'Lifetime execution KPIs:',
+    ...Object.entries(stats).map(([k, v]) => `- ${k}: ${v}`),
+    '',
+    'Return a JSON object:',
+    '1. title: A short executor title (2-4 words) that captures who this founder is right now based on the numbers.',
+    '2. headline: One punchy sentence verdict on their lifetime performance that cites at least one real number.',
+    '3. motivation: 2-3 sentences of direct, high-standards motivation tied to their actual weak spot.',
+    '4. strength: One sentence naming their strongest metric and why it matters.',
+    '5. focus: One concrete action for the next 7 days that would move their weakest KPI.',
+    '6. awardName: A creative award name (2-5 words) they have genuinely earned from these numbers. If the numbers are poor, award effort or a comeback, honestly.',
+    '7. awardReason: One sentence explaining exactly which numbers earned the award.',
+  ].join('\n');
+  const model = getCoachModel(p);
+  const parsed =
+    p === 'claude'
+      ? await callClaude<Record<string, string>>(apiKey, model, prompt, system, REVIEW_KEYS)
+      : await callGemini<Record<string, string>>(apiKey, model, prompt, system, REVIEW_KEYS);
+  const pick = (k: string, max: number) => String(parsed[k] ?? '').slice(0, max);
+  if (!parsed.headline || !parsed.motivation) throw new Error('Incomplete review from the AI coach.');
+  return {
+    title: pick('title', 60),
+    headline: pick('headline', 300),
+    motivation: pick('motivation', 800),
+    strength: pick('strength', 300),
+    focus: pick('focus', 400),
+    awardName: pick('awardName', 80),
+    awardReason: pick('awardReason', 300),
+    provider: p,
+    createdAt: new Date().toISOString(),
   };
 }
