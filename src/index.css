@@ -62,3 +62,16 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Mobile bottom nav = 4rem tall + home-indicator safe area. Keep the FAB and page content clear of it. */
+.fab-above-nav {
+  bottom: calc(4rem + max(0.5rem, env(safe-area-inset-bottom)) + 0.875rem);
+}
+.pb-mobile-nav {
+  padding-bottom: calc(4rem + max(0.5rem, env(safe-area-inset-bottom)) + 5rem);
+}
+@media (min-width: 1024px) {
+  .pb-mobile-nav {
+    padding-bottom: 2.5rem;
+  }
+}

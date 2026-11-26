@@ -660,7 +660,7 @@ function EmpireWorkspace({
         )}
 
         {/* Active Tab Viewport */}
-        <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-28 lg:pb-10">
+        <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-mobile-nav lg:pb-10">
           {loading ? (
             <div className="py-24 flex flex-col items-center justify-center gap-3 text-slate-500">
               <Loader2 className="w-6 h-6 text-slate-900 animate-spin" />
@@ -850,7 +850,7 @@ function EmpireWorkspace({
           setTaskModalOpen(true);
         }}
         aria-label="Quick add new task"
-        className="lg:hidden fixed right-4 bottom-20 z-40 w-13 h-13 rounded-2xl bg-slate-900 text-white shadow-lg shadow-slate-900/20 flex items-center justify-center active:scale-95 transition-transform cursor-pointer"
+        className="lg:hidden fixed right-4 fab-above-nav z-50 w-13 h-13 rounded-2xl bg-slate-900 text-white shadow-lg shadow-slate-900/20 flex items-center justify-center active:scale-95 transition-transform cursor-pointer"
       >
         <Plus className="w-6 h-6 stroke-[2.5]" />
       </button>
