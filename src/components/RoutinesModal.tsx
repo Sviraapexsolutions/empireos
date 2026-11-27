@@ -223,7 +223,7 @@ export function RoutinesModal({ open, businesses, tasks, onClose, onCreate, onSt
           </div>
           <p className="text-[11px] text-slate-500 flex items-center gap-1">
             <CalendarClock className="w-3.5 h-3.5" />
-            First one on {formatShortDate(firstDateFor(rule, weekday))}. Monthly routines (GST, salaries) are coming soon.
+            First one on {formatShortDate(firstDateFor(rule, weekday))}.
           </p>
           {error && <div className="text-xs text-red-600">{error}</div>}
           <button

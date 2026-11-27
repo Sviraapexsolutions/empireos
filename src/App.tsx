@@ -39,6 +39,7 @@ import { TodayTab } from './components/TodayTab';
 import { VenturesTab, type VentureBulkAction, type VentureSelection } from './components/VenturesTab';
 import { RoutinesModal, type NewRoutineInput } from './components/RoutinesModal';
 import { VoiceCaptureModal, type VoiceTaskToCreate } from './components/VoiceCaptureModal';
+import { WeeklyReviewModal } from './components/WeeklyReviewModal';
 import { groupRoutines, nextOccurrence, occurrenceOnOrAfter, type RoutineRule, type RoutineSeries } from './utils/routines';
 import { useEmpireData } from './hooks/useEmpireData';
 import {
@@ -143,6 +144,7 @@ function EmpireWorkspace({
   // Business routines
   const [routinesOpen, setRoutinesOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [weeklyOpen, setWeeklyOpen] = useState(false);
   const routineGuard = useRef<Map<string, number>>(new Map());
 
   // Reusable in-app ConfirmDialog state
@@ -946,6 +948,14 @@ function EmpireWorkspace({
               }}
               onOpenProject={handleJumpToProject}
               onPreviewFile={(file) => setPreviewFile(file)}
+              onOpenWeeklyReview={() => setWeeklyOpen(true)}
+              onOpenVenture={(bizId) => {
+                const firstProj = projects.find((p) => p.businessId === bizId && !p.isArchived);
+                setActiveTab('ventures');
+                if (firstProj) {
+                  setFocusedProject({ businessId: bizId, projectId: firstProj.id, nonce: Date.now() });
+                }
+              }}
             />
           ) : activeTab === 'today' ? (
             <TodayTab
@@ -1258,6 +1268,15 @@ function EmpireWorkspace({
       />
 
       <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
+
+      <WeeklyReviewModal
+        open={weeklyOpen}
+        businesses={businesses}
+        tasks={tasks}
+        habits={habits}
+        aiProvider={profile?.aiProvider || 'gemini'}
+        onClose={() => setWeeklyOpen(false)}
+      />
 
       <VoiceCaptureModal
         open={voiceOpen}

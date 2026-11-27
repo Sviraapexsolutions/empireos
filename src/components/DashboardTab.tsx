@@ -16,7 +16,9 @@ import {
   Plus,
   ShieldAlert,
   Target,
+  CalendarRange,
 } from 'lucide-react';
+import { VentureHealthSection } from './VentureHealthSection';
 import type { Business, Project, Task, TaskFile, TriggerReason } from '../types/empire';
 import {
   formatReadableDate,
@@ -42,6 +44,8 @@ interface DashboardTabProps {
   onOpenNewTaskModal: () => void;
   onOpenProject: (project: Project) => void;
   onPreviewFile: (file: TaskFile) => void;
+  onOpenWeeklyReview: () => void;
+  onOpenVenture: (businessId: string) => void;
 }
 
 type SortKey = 'remaining' | 'completion' | 'name';
@@ -100,6 +104,8 @@ export function DashboardTab({
   onOpenNewTaskModal,
   onOpenProject,
   onPreviewFile,
+  onOpenWeeklyReview,
+  onOpenVenture,
 }: DashboardTabProps) {
   const [selectedBizFilter, setSelectedBizFilter] = useState<string>('all');
   const [sortKey, setSortKey] = useState<SortKey>('remaining');
@@ -342,14 +348,24 @@ export function DashboardTab({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenNewTaskModal}
-          className="min-h-[40px] px-4 rounded-xl bg-slate-900 text-white text-xs font-semibold inline-flex items-center gap-1.5 hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          New Task
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenWeeklyReview}
+            className="min-h-[40px] px-3.5 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-slate-800 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <CalendarRange className="w-4 h-4 text-amber-600" />
+            Weekly Review
+          </button>
+          <button
+            type="button"
+            onClick={onOpenNewTaskModal}
+            className="min-h-[40px] px-4 rounded-xl bg-slate-900 text-white text-xs font-semibold inline-flex items-center gap-1.5 hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            New Task
+          </button>
+        </div>
       </div>
 
       {/* HERO 2-COLUMN EXECUTION SPLIT: Current Task at Hand + Next Upcoming Scheduled Task */}
@@ -680,6 +696,13 @@ export function DashboardTab({
           </div>
         </div>
       </section>
+
+      <VentureHealthSection
+        businesses={businesses}
+        projects={projects}
+        tasks={tasks}
+        onOpenVenture={onOpenVenture}
+      />
 
       {/* PROJECT-WISE KPIs TABLE (Done vs Not Done Breakdown) */}
       <section className="rounded-2xl bg-white border border-slate-200 overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04)]">

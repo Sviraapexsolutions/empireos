@@ -381,3 +381,54 @@ export async function parseVoiceToTasks(
       isMilestone: Boolean(t.isMilestone),
     }));
 }
+
+// ---------------------------------------------------------------------------
+// Weekly review
+// ---------------------------------------------------------------------------
+
+export interface WeeklyAiReview {
+  verdict: string;
+  wins: string;
+  slips: string;
+  plan: string; // newline-separated bullets
+  focus: string;
+  createdAt: string;
+}
+
+const WEEKLY_KEYS = ['verdict', 'wins', 'slips', 'plan', 'focus'];
+
+export async function generateWeeklyReview(provider: AiProvider, weekSummary: string): Promise<WeeklyAiReview> {
+  const p: AiProvider = provider === 'claude' ? 'claude' : 'gemini';
+  const apiKey = getCoachApiKey(p);
+  if (!apiKey) {
+    throw new Error(
+      `No ${p === 'claude' ? 'Claude (Anthropic)' : 'Gemini'} API key saved on this device. Add it in Settings → AI Accountability Coach.`
+    );
+  }
+  const system =
+    'You are the EmpireOS chief-of-staff for an Indian founder running several ventures. You write a sharp, honest weekly review grounded only in the data given. No generic advice. Always output valid JSON with the exact keys requested.';
+  const prompt = [
+    weekSummary,
+    '',
+    'Return a JSON object:',
+    '1. verdict: 2 sentences — an honest grade of the week citing real numbers.',
+    '2. wins: 1-2 sentences on what genuinely went well (name ventures/tasks).',
+    '3. slips: 1-2 sentences on what slipped and the likely pattern behind it.',
+    '4. plan: 3 to 5 concrete priorities for next week, one per line, each starting with "- " and naming the venture. Carry forward important slipped work.',
+    '5. focus: One sentence — the single most important thing to protect next week.',
+  ].join('\n');
+  const model = getCoachModel(p);
+  const parsed =
+    p === 'claude'
+      ? await callClaude<Record<string, string>>(apiKey, model, prompt, system, WEEKLY_KEYS)
+      : await callGemini<Record<string, string>>(apiKey, model, prompt, system, WEEKLY_KEYS);
+  if (!parsed.verdict || !parsed.plan) throw new Error('Incomplete weekly review from the AI.');
+  return {
+    verdict: String(parsed.verdict).slice(0, 600),
+    wins: String(parsed.wins || '').slice(0, 600),
+    slips: String(parsed.slips || '').slice(0, 600),
+    plan: String(parsed.plan).slice(0, 1500),
+    focus: String(parsed.focus || '').slice(0, 400),
+    createdAt: new Date().toISOString(),
+  };
+}
