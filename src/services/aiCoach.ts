@@ -135,7 +135,8 @@ async function callGemini<T = Omit<RealityCheckResult, 'provider'>>(
   model: string,
   prompt: string,
   system: string = SYSTEM_INSTRUCTION,
-  keys: string[] = RC_KEYS
+  keys: string[] = RC_KEYS,
+  schemaOverride?: Record<string, unknown>
 ): Promise<T> {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
@@ -147,7 +148,7 @@ async function callGemini<T = Omit<RealityCheckResult, 'provider'>>(
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
           responseMimeType: 'application/json',
-          responseSchema: {
+          responseSchema: schemaOverride || {
             type: 'OBJECT',
             properties: Object.fromEntries(keys.map((k) => [k, { type: 'STRING' }])),
             required: keys,
@@ -290,4 +291,93 @@ export async function generatePerformanceReview(
     provider: p,
     createdAt: new Date().toISOString(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Voice capture: turn a spoken sentence into structured tasks
+// ---------------------------------------------------------------------------
+
+export interface VoiceTaskDraft {
+  title: string;
+  venture: string; // venture name or ""
+  project: string; // project name or ""
+  date: string; // YYYY-MM-DD
+  time: string; // HH:mm or ""
+  priority: 'high' | 'standard';
+  repeat: 'none' | 'daily' | 'weekdays' | 'weekly';
+  isMilestone: boolean;
+}
+
+export async function parseVoiceToTasks(
+  provider: AiProvider,
+  transcript: string,
+  ctx: { today: string; weekday: string; ventures: string[]; projects: Array<{ name: string; venture: string }> }
+): Promise<VoiceTaskDraft[]> {
+  const p: AiProvider = provider === 'claude' ? 'claude' : 'gemini';
+  const apiKey = getCoachApiKey(p);
+  if (!apiKey) throw new Error('NO_KEY');
+  const system =
+    'You convert a busy Indian founder\'s spoken note (English, Hindi or Hinglish) into clean, actionable tasks for a task manager. Output only valid JSON.';
+  const prompt = [
+    `Today is ${ctx.weekday}, ${ctx.today} (timezone Asia/Kolkata).`,
+    `Ventures: ${ctx.ventures.join(' | ') || '(none)'}`,
+    `Projects: ${ctx.projects.map((x) => `${x.name} [${x.venture}]`).join(' | ') || '(none)'}`,
+    '',
+    `Spoken note: """${transcript.slice(0, 1500)}"""`,
+    '',
+    'Return {"tasks": [...]} where each task has:',
+    '- title: short imperative task title in English (keep names/places as said), no date/time words',
+    '- venture: exact name from the Ventures list that fits best, or "" if unclear',
+    '- project: exact name from the Projects list if clearly mentioned, else ""',
+    '- date: YYYY-MM-DD resolved from words like today, kal/tomorrow, parso, Friday, next week; default today',
+    '- time: HH:mm 24h if a time is said (e.g. "11 baje" = 11:00, "shaam 5" = 17:00), else ""',
+    '- priority: "high" if urgent/important/zaroori, else "standard"',
+    '- repeat: "daily" | "weekdays" | "weekly" if they say every day/roz/har hafte etc., else "none"',
+    '- isMilestone: true only if they call it a milestone',
+    'Split separate actions into separate tasks.',
+  ].join('\n');
+  const model = getCoachModel(p);
+  const schema = {
+    type: 'OBJECT',
+    properties: {
+      tasks: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            title: { type: 'STRING' },
+            venture: { type: 'STRING' },
+            project: { type: 'STRING' },
+            date: { type: 'STRING' },
+            time: { type: 'STRING' },
+            priority: { type: 'STRING', enum: ['high', 'standard'] },
+            repeat: { type: 'STRING', enum: ['none', 'daily', 'weekdays', 'weekly'] },
+            isMilestone: { type: 'BOOLEAN' },
+          },
+          required: ['title', 'venture', 'project', 'date', 'time', 'priority', 'repeat', 'isMilestone'],
+        },
+      },
+    },
+    required: ['tasks'],
+  };
+  const parsed =
+    p === 'claude'
+      ? await callClaude<{ tasks?: VoiceTaskDraft[] }>(apiKey, model, prompt, system, ['tasks'])
+      : await callGemini<{ tasks?: VoiceTaskDraft[] }>(apiKey, model, prompt, system, ['tasks'], schema);
+  const list = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+  const dateOk = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
+  const timeOk = (t: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
+  return list
+    .filter((t) => t && String(t.title || '').trim())
+    .slice(0, 10)
+    .map((t) => ({
+      title: String(t.title).trim().slice(0, 200),
+      venture: String(t.venture || ''),
+      project: String(t.project || ''),
+      date: dateOk(String(t.date)) ? String(t.date) : ctx.today,
+      time: timeOk(String(t.time)) ? String(t.time) : '',
+      priority: t.priority === 'high' ? 'high' : 'standard',
+      repeat: ['daily', 'weekdays', 'weekly'].includes(String(t.repeat)) ? (t.repeat as VoiceTaskDraft['repeat']) : 'none',
+      isMilestone: Boolean(t.isMilestone),
+    }));
 }

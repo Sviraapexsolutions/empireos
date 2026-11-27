@@ -37,6 +37,9 @@ import { RealityCheckModal } from './components/RealityCheckModal';
 import { SettingsTab } from './components/SettingsTab';
 import { TodayTab } from './components/TodayTab';
 import { VenturesTab, type VentureBulkAction, type VentureSelection } from './components/VenturesTab';
+import { RoutinesModal, type NewRoutineInput } from './components/RoutinesModal';
+import { VoiceCaptureModal, type VoiceTaskToCreate } from './components/VoiceCaptureModal';
+import { groupRoutines, nextOccurrence, occurrenceOnOrAfter, type RoutineRule, type RoutineSeries } from './utils/routines';
 import { useEmpireData } from './hooks/useEmpireData';
 import {
   clearWorkspaceItems,
@@ -52,6 +55,7 @@ import {
   closeBusiness,
   closeProject,
   completeTasks,
+  stopRoutineSeries,
   deleteTask,
   deleteTaskFile,
   requestRealityCheckAndSave,
@@ -135,6 +139,11 @@ function EmpireWorkspace({
 
   // File preview lightbox
   const [previewFile, setPreviewFile] = useState<TaskFile | null>(null);
+
+  // Business routines
+  const [routinesOpen, setRoutinesOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const routineGuard = useRef<Map<string, number>>(new Map());
 
   // Reusable in-app ConfirmDialog state
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
@@ -253,6 +262,96 @@ function EmpireWorkspace({
 
   autoOverdueRef.current = (task: Task) => {
     void triggerRealityCheckInternal(task, 'overdue');
+  };
+
+  // Routine engine: keep exactly one open occurrence per routine, roll missed ones forward.
+  useEffect(() => {
+    if (!user?.uid || tasks.length === 0) return;
+    const today = getTodayKey();
+    const now = Date.now();
+    for (const series of groupRoutines(tasks)) {
+      const last = routineGuard.current.get(series.key) || 0;
+      if (now - last < 60_000) continue;
+      const rule = series.latest.recurrenceRule as RoutineRule;
+      const base = series.latest;
+      const stale = series.occurrences.filter((t) => t.status === 'pending' && t.scheduledDate < today);
+      const hasOpenCurrent = series.occurrences.some((t) => t.status === 'pending' && t.scheduledDate >= today);
+      if (hasOpenCurrent && stale.length === 0) continue;
+
+      routineGuard.current.set(series.key, now);
+      void (async () => {
+        for (const t of stale) await updateTaskStatus(user.uid, t, 'missed');
+        if (hasOpenCurrent) return;
+        const from = base.status === 'done' && base.scheduledDate >= today ? nextOccurrence(base.scheduledDate, rule) : today;
+        const nextDate = occurrenceOnOrAfter(base.scheduledDate, rule, from);
+        if (series.occurrences.some((t) => t.scheduledDate === nextDate)) return;
+        await createTask(user.uid, {
+          title: base.title,
+          businessId: base.businessId,
+          projectId: base.projectId,
+          phaseHeading: base.phaseHeading,
+          scheduledDate: nextDate,
+          scheduledTime: base.scheduledTime,
+          hardDeadline: '',
+          priority: base.priority,
+          isMilestone: false,
+          blockedByTaskId: '',
+          isHabit: true,
+          recurrenceRule: base.recurrenceRule,
+          attachmentIds: [],
+        });
+      })();
+    }
+  }, [user?.uid, tasks]);
+
+  const handleCreateRoutine = async (input: NewRoutineInput) => {
+    await createTask(user.uid, {
+      title: input.title,
+      businessId: input.businessId,
+      projectId: '',
+      phaseHeading: '',
+      scheduledDate: input.startDate,
+      scheduledTime: input.time,
+      hardDeadline: '',
+      priority: 'standard',
+      isMilestone: false,
+      blockedByTaskId: '',
+      isHabit: true,
+      recurrenceRule: input.rule,
+      attachmentIds: [],
+    });
+  };
+
+  const handleAddVoiceTasks = async (list: VoiceTaskToCreate[]) => {
+    for (const t of list) {
+      await createTask(user.uid, {
+        title: t.title,
+        businessId: t.businessId,
+        projectId: t.projectId,
+        phaseHeading: t.phaseHeading,
+        scheduledDate: t.date,
+        scheduledTime: t.time,
+        hardDeadline: '',
+        priority: t.priority,
+        isMilestone: t.isMilestone,
+        blockedByTaskId: '',
+        isHabit: t.repeat !== 'none',
+        recurrenceRule: t.repeat,
+        attachmentIds: [],
+      });
+    }
+  };
+
+  const handleStopRoutine = (series: RoutineSeries) => {
+    setPendingConfirm({
+      title: `Stop "${series.latest.title}"`,
+      description: 'No new occurrences will be created. Past ones stay in your history and KPIs; any open upcoming one is removed.',
+      confirmLabel: 'Stop Routine',
+      onConfirm: async () => {
+        routineGuard.current.set(series.key, Date.now() + 600_000);
+        await stopRoutineSeries(user.uid, series.occurrences);
+      },
+    });
   };
 
   // --- Handlers ---
@@ -873,6 +972,8 @@ function EmpireWorkspace({
               }}
               onDeleteTask={handleRequestDeleteTask}
               onPreviewFile={(file) => setPreviewFile(file)}
+              onOpenRoutines={() => setRoutinesOpen(true)}
+              onOpenVoice={() => setVoiceOpen(true)}
             />
           ) : activeTab === 'calendar' ? (
             <CalendarTab
@@ -1157,6 +1258,24 @@ function EmpireWorkspace({
       />
 
       <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
+
+      <VoiceCaptureModal
+        open={voiceOpen}
+        businesses={businesses}
+        projects={projects}
+        aiProvider={profile?.aiProvider || 'gemini'}
+        onClose={() => setVoiceOpen(false)}
+        onAdd={handleAddVoiceTasks}
+      />
+
+      <RoutinesModal
+        open={routinesOpen}
+        businesses={businesses}
+        tasks={tasks}
+        onClose={() => setRoutinesOpen(false)}
+        onCreate={handleCreateRoutine}
+        onStop={handleStopRoutine}
+      />
 
       <ConfirmDialog
         open={Boolean(pendingConfirm)}

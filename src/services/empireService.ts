@@ -1003,3 +1003,24 @@ export async function bulkDelete(
     }
   }
 }
+
+/** Stops a routine: past occurrences stay as history (no longer recurring); open future ones are removed. */
+export async function stopRoutineSeries(uid: string, occurrences: Task[]): Promise<void> {
+  const today = getTodayKey();
+  for (let i = 0; i < occurrences.length; i += 400) {
+    const batch = writeBatch(db);
+    occurrences.slice(i, i + 400).forEach((t) => {
+      const ref = doc(db, 'users', uid, 'tasks', t.id);
+      if (t.status === 'pending' && t.scheduledDate >= today) {
+        batch.delete(ref);
+      } else {
+        batch.update(ref, { isHabit: false, recurrenceRule: 'none', updatedAt: serverTimestamp() });
+      }
+    });
+    try {
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${uid}/tasks`);
+    }
+  }
+}

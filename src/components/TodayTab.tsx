@@ -7,6 +7,8 @@ import {
   Clock,
   Lock,
   Plus,
+  Mic,
+  Repeat,
 } from 'lucide-react';
 import type { Business, Project, Task, TaskFile, TriggerReason } from '../types/empire';
 import { getTodayKey } from '../utils/dateUtils';
@@ -32,6 +34,8 @@ interface TodayTabProps {
   onEditTask: (task: Task) => void;
   onDeleteTask: (task: Task) => void;
   onPreviewFile: (file: TaskFile) => void;
+  onOpenRoutines: () => void;
+  onOpenVoice: () => void;
 }
 
 type GroupMode = 'business' | 'chronological';
@@ -53,6 +57,8 @@ export function TodayTab({
   onEditTask,
   onDeleteTask,
   onPreviewFile,
+  onOpenRoutines,
+  onOpenVoice,
 }: TodayTabProps) {
   const [groupMode, setGroupMode] = useState<GroupMode>('business');
   const [collapsedBizIds, setCollapsedBizIds] = useState<Record<string, boolean>>({});
@@ -151,6 +157,25 @@ export function TodayTab({
         onCreateFromParsed={onCreateFromParsed}
         onOpenFullModal={onOpenNewTaskModal}
       />
+
+      <div className="grid grid-cols-2 gap-2.5">
+        <button
+          type="button"
+          onClick={onOpenVoice}
+          className="min-h-[44px] rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-sm font-semibold text-slate-800 inline-flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <Mic className="w-4 h-4 text-amber-600" />
+          Voice Add
+        </button>
+        <button
+          type="button"
+          onClick={onOpenRoutines}
+          className="min-h-[44px] rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-sm font-semibold text-slate-800 inline-flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <Repeat className="w-4 h-4 text-amber-600" />
+          Routines
+        </button>
+      </div>
 
       {/* Grouping Segmented Control */}
       <div className="flex flex-wrap items-center justify-between gap-3">

@@ -92,7 +92,7 @@ const LEVELS = [
 
 export function computeLifetimeKpis(tasks: Task[], habits: Habit[], coachLogs: CoachLog[]): LifetimeKpis {
   const today = getTodayKey();
-  const realTasks = tasks.filter((t) => !t.isHabit);
+  const realTasks = tasks; // includes recurring routines
 
   const doneTasks = realTasks.filter((t) => t.status === 'done');
   const missedTasks = realTasks.filter((t) => t.status === 'missed');
