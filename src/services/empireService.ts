@@ -908,3 +908,98 @@ export function getBusinessMap(businesses: Business[]): Map<string, Business> {
 export function getProjectMap(projects: Project[]): Map<string, Project> {
   return new Map(projects.map((p) => [p.id, p]));
 }
+
+// --- BULK ACTIONS & CLOSING FINISHED WORK ---
+
+/** Marks every pending task in the list as done (batched). */
+export async function completeTasks(uid: string, list: Task[]): Promise<void> {
+  const pending = list.filter((t) => t.status !== 'done');
+  const nowIso = new Date().toISOString();
+  for (let i = 0; i < pending.length; i += 400) {
+    const batch = writeBatch(db);
+    pending.slice(i, i + 400).forEach((t) => {
+      batch.update(doc(db, 'users', uid, 'tasks', t.id), {
+        status: 'done',
+        completedAt: nowIso,
+        streakCount: t.isHabit ? t.streakCount + 1 : t.streakCount,
+        updatedAt: serverTimestamp(),
+      });
+    });
+    try {
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${uid}/tasks`);
+    }
+  }
+}
+
+/** Closes a finished project: optionally completes remaining tasks, then archives it. */
+export async function closeProject(
+  uid: string,
+  project: Project,
+  allTasks: Task[],
+  completeRemaining: boolean
+): Promise<void> {
+  if (completeRemaining) {
+    await completeTasks(uid, allTasks.filter((t) => t.projectId === project.id));
+  }
+  if (!project.isArchived) await toggleProjectArchived(uid, project.id, true);
+}
+
+/** Closes a finished business: optionally completes remaining tasks, archives its projects, deactivates it. */
+export async function closeBusiness(
+  uid: string,
+  business: Business,
+  allProjects: Project[],
+  allTasks: Task[],
+  completeRemaining: boolean
+): Promise<void> {
+  if (completeRemaining) {
+    await completeTasks(uid, allTasks.filter((t) => t.businessId === business.id && !t.isHabit));
+  }
+  for (const p of allProjects.filter((p) => p.businessId === business.id && !p.isArchived)) {
+    await toggleProjectArchived(uid, p.id, true);
+  }
+  if (business.isActive) await toggleBusinessActive(uid, business.id, false);
+}
+
+export interface BulkSelection {
+  businessIds: string[];
+  projectIds: string[];
+  taskIds: string[];
+}
+
+/** Deletes everything selected. Projects inside a deleted business and tasks inside a deleted project are handled by the cascades. */
+export async function bulkDelete(
+  uid: string,
+  sel: BulkSelection,
+  allProjects: Project[],
+  allTasks: Task[],
+  projectTaskMode: 'unlink' | 'delete-tasks'
+): Promise<void> {
+  const bizSet = new Set(sel.businessIds);
+  for (const id of sel.businessIds) await deleteBusinessCascade(uid, id);
+
+  const projects = sel.projectIds
+    .map((id) => allProjects.find((p) => p.id === id))
+    .filter((p): p is Project => Boolean(p) && !bizSet.has(p!.businessId));
+  const projSet = new Set(projects.map((p) => p.id));
+  for (const p of projects) await deleteProjectCascade(uid, p.id, projectTaskMode);
+
+  const taskIds = sel.taskIds.filter((id) => {
+    const t = allTasks.find((x) => x.id === id);
+    if (!t) return false;
+    if (bizSet.has(t.businessId)) return false;
+    if (projectTaskMode === 'delete-tasks' && projSet.has(t.projectId)) return false;
+    return true;
+  });
+  for (let i = 0; i < taskIds.length; i += 400) {
+    const batch = writeBatch(db);
+    taskIds.slice(i, i + 400).forEach((id) => batch.delete(doc(db, 'users', uid, 'tasks', id)));
+    try {
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `users/${uid}/tasks`);
+    }
+  }
+}

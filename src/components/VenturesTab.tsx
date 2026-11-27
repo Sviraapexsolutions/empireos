@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Archive,
   Calendar,
+  CheckCircle2,
+  CheckSquare,
+  ListChecks,
+  Square,
+  X,
   ChevronDown,
   ChevronRight,
   Diamond,
@@ -40,6 +45,46 @@ interface VenturesTabProps {
   onEditTask: (task: Task) => void;
   onDeleteTask: (task: Task) => void;
   onPreviewFile: (file: TaskFile) => void;
+  onCloseBusiness: (business: Business) => void;
+  onCloseProject: (project: Project) => void;
+  onBulkAction: (action: VentureBulkAction, selection: VentureSelection) => void;
+}
+
+export type VentureBulkAction = 'delete' | 'archive' | 'close';
+export interface VentureSelection {
+  businessIds: string[];
+  projectIds: string[];
+  taskIds: string[];
+}
+
+function SelectBox({ checked, onToggle, label }: { checked: boolean; onToggle: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      aria-label={label}
+      aria-pressed={checked}
+      className="min-w-[36px] min-h-[36px] -ml-1.5 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 cursor-pointer shrink-0"
+    >
+      {checked ? (
+        <CheckSquare className="w-5 h-5 text-slate-900" />
+      ) : (
+        <Square className="w-5 h-5" />
+      )}
+    </button>
+  );
+}
+
+function CompletedBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 shrink-0">
+      <CheckCircle2 className="w-3 h-3" />
+      Completed
+    </span>
+  );
 }
 
 export function VenturesTab({
@@ -66,7 +111,41 @@ export function VenturesTab({
   onEditTask,
   onDeleteTask,
   onPreviewFile,
+  onCloseBusiness,
+  onCloseProject,
+  onBulkAction,
 }: VenturesTabProps) {
+  const [selectMode, setSelectMode] = useState(false);
+  const [selBiz, setSelBiz] = useState<Set<string>>(new Set());
+  const [selProj, setSelProj] = useState<Set<string>>(new Set());
+  const [selTask, setSelTask] = useState<Set<string>>(new Set());
+  const toggleIn = (setter: React.Dispatch<React.SetStateAction<Set<string>>>, id: string) =>
+    setter((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const clearSelection = () => {
+    setSelBiz(new Set());
+    setSelProj(new Set());
+    setSelTask(new Set());
+  };
+  const exitSelect = () => {
+    clearSelection();
+    setSelectMode(false);
+  };
+  const selectedCount = selBiz.size + selProj.size + selTask.size;
+  const runBulk = (action: VentureBulkAction) => {
+    if (selectedCount === 0) return;
+    onBulkAction(action, {
+      businessIds: [...selBiz],
+      projectIds: [...selProj],
+      taskIds: [...selTask],
+    });
+    exitSelect();
+  };
+
   const [expandedBizIds, setExpandedBizIds] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     businesses.forEach((b) => {
@@ -119,7 +198,19 @@ export function VenturesTab({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
+            className={`min-h-[40px] px-3 rounded-xl border text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer inline-flex items-center gap-1.5 ${
+              selectMode
+                ? 'bg-slate-900 border-slate-900 text-white'
+                : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+            }`}
+          >
+            <ListChecks className="w-4 h-4" />
+            {selectMode ? 'Done Selecting' : 'Select'}
+          </button>
           <button
             type="button"
             onClick={() => setShowArchived((v) => !v)}
@@ -151,6 +242,8 @@ export function VenturesTab({
           const bizTasks = tasks.filter((t) => t.businessId === biz.id);
           const bizDone = bizTasks.filter((t) => t.status === 'done').length;
           const expanded = isBizExpanded(biz.id);
+          const bizCompleted =
+            !biz.isActive && bizTasks.length > 0 && bizTasks.every((t) => t.status === 'done');
 
           return (
             <section
@@ -161,10 +254,18 @@ export function VenturesTab({
             >
               {/* Business Row Header */}
               <div className="p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-1 min-w-0 flex-1 basis-full sm:basis-0">
+                {selectMode && (
+                  <SelectBox
+                    checked={selBiz.has(biz.id)}
+                    onToggle={() => toggleIn(setSelBiz, biz.id)}
+                    label={`Select ${biz.name}`}
+                  />
+                )}
                 <button
                   type="button"
                   onClick={() => toggleBiz(biz.id)}
-                  className="flex items-center gap-3 min-w-0 flex-1 basis-full sm:basis-0 text-left cursor-pointer"
+                  className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
                 >
                   {expanded ? (
                     <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
@@ -182,8 +283,12 @@ export function VenturesTab({
                       <h3 className="font-display text-base sm:text-lg font-semibold text-slate-900 truncate">
                         {biz.name}
                       </h3>
-                      {!biz.isActive && (
-                        <span className="text-xs text-slate-400 font-medium">Archived</span>
+                      {bizCompleted ? (
+                        <CompletedBadge />
+                      ) : (
+                        !biz.isActive && (
+                          <span className="text-xs text-slate-400 font-medium">Archived</span>
+                        )
                       )}
                     </div>
                     <div className="text-xs text-slate-500 font-mono tabular-nums">
@@ -191,6 +296,7 @@ export function VenturesTab({
                     </div>
                   </div>
                 </button>
+                </div>
 
                 <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-0">
                   <button
@@ -209,6 +315,17 @@ export function VenturesTab({
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
+                  {biz.isActive && (
+                    <button
+                      type="button"
+                      onClick={() => onCloseBusiness(biz)}
+                      aria-label={`Close ${biz.name} as finished`}
+                      title="Close as finished"
+                      className="min-w-[36px] min-h-[36px] rounded-lg text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 flex items-center justify-center transition-colors cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => onToggleBusinessActive(biz)}
@@ -259,6 +376,10 @@ export function VenturesTab({
                       const milestones = projTasks.filter((t) => t.isMilestone);
                       const milestonesDone = milestones.filter((t) => t.status === 'done').length;
                       const projExpanded = Boolean(expandedProjIds[proj.id]);
+                      const projCompleted =
+                        proj.isArchived &&
+                        projTasks.length > 0 &&
+                        projTasks.every((t) => t.status === 'done');
 
                       const phases = [...proj.phaseHeadings];
                       const unphasedTasks = projTasks.filter(
@@ -272,10 +393,18 @@ export function VenturesTab({
                           className="p-4 sm:px-6 space-y-3"
                         >
                           <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="flex items-start gap-1 flex-1 basis-full sm:basis-0 min-w-0">
+                            {selectMode && (
+                              <SelectBox
+                                checked={selProj.has(proj.id)}
+                                onToggle={() => toggleIn(setSelProj, proj.id)}
+                                label={`Select ${proj.name}`}
+                              />
+                            )}
                             <button
                               type="button"
                               onClick={() => toggleProj(proj.id)}
-                              className="flex-1 basis-full sm:basis-0 min-w-0 text-left space-y-2 cursor-pointer"
+                              className="flex-1 min-w-0 text-left space-y-2 cursor-pointer"
                             >
                               <div className="flex items-center gap-2">
                                 {projExpanded ? (
@@ -286,8 +415,12 @@ export function VenturesTab({
                                 <h4 className="text-sm sm:text-base font-semibold text-slate-900 truncate">
                                   {proj.name}
                                 </h4>
-                                {proj.isArchived && (
-                                  <span className="text-xs text-slate-400">Archived</span>
+                                {projCompleted ? (
+                                  <CompletedBadge />
+                                ) : (
+                                  proj.isArchived && (
+                                    <span className="text-xs text-slate-400">Archived</span>
+                                  )
                                 )}
                               </div>
 
@@ -330,6 +463,7 @@ export function VenturesTab({
                                 )}
                               </div>
                             </button>
+                            </div>
 
                             <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
                               <button
@@ -354,6 +488,17 @@ export function VenturesTab({
                               >
                                 <Pencil className="w-3.5 h-3.5" />
                               </button>
+                              {!proj.isArchived && (
+                                <button
+                                  type="button"
+                                  onClick={() => onCloseProject(proj)}
+                                  aria-label={`Close ${proj.name} as finished`}
+                                  title="Close as finished"
+                                  className="min-w-[34px] min-h-[34px] rounded-lg text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 flex items-center justify-center cursor-pointer"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => onToggleProjectArchive(proj)}
@@ -419,9 +564,17 @@ export function VenturesTab({
                                             ? taskMap.get(task.blockedByTaskId)
                                             : undefined;
                                           return (
+                                            <div key={task.id} className="flex items-start gap-1">
+                                              {selectMode && (
+                                                <SelectBox
+                                                  checked={selTask.has(task.id)}
+                                                  onToggle={() => toggleIn(setSelTask, task.id)}
+                                                  label={`Select ${task.title}`}
+                                                />
+                                              )}
+                                              <div className="flex-1 min-w-0">
                                             <TaskCard
-                                              key={task.id}
-                                              task={task}
+                                                                                            task={task}
                                               business={biz}
                                               project={proj}
                                               filesMap={filesMap}
@@ -436,6 +589,8 @@ export function VenturesTab({
                                               onDelete={onDeleteTask}
                                               onPreviewFile={onPreviewFile}
                                             />
+                                              </div>
+                                            </div>
                                           );
                                         })}
                                       </div>
@@ -456,9 +611,17 @@ export function VenturesTab({
                                         ? taskMap.get(task.blockedByTaskId)
                                         : undefined;
                                       return (
+                                        <div key={task.id} className="flex items-start gap-1">
+                                          {selectMode && (
+                                            <SelectBox
+                                              checked={selTask.has(task.id)}
+                                              onToggle={() => toggleIn(setSelTask, task.id)}
+                                              label={`Select ${task.title}`}
+                                            />
+                                          )}
+                                          <div className="flex-1 min-w-0">
                                         <TaskCard
-                                          key={task.id}
-                                          task={task}
+                                                                                    task={task}
                                           business={biz}
                                           project={proj}
                                           filesMap={filesMap}
@@ -473,6 +636,8 @@ export function VenturesTab({
                                           onDelete={onDeleteTask}
                                           onPreviewFile={onPreviewFile}
                                         />
+                                          </div>
+                                        </div>
                                       );
                                     })}
                                   </div>
@@ -490,6 +655,49 @@ export function VenturesTab({
           );
         })}
       </div>
+
+      {selectMode && (
+        <div className="fixed left-3 right-3 lg:left-auto lg:right-8 lg:w-[560px] fab-above-nav lg:bottom-8 z-50 rounded-2xl bg-slate-900 text-white shadow-xl p-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold px-1 mr-auto tabular-nums">
+            {selectedCount} selected
+          </span>
+          <button
+            type="button"
+            disabled={selectedCount === 0}
+            onClick={() => runBulk('close')}
+            className="min-h-[36px] px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Close
+          </button>
+          <button
+            type="button"
+            disabled={selectedCount === 0}
+            onClick={() => runBulk('archive')}
+            className="min-h-[36px] px-3 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+          >
+            <Archive className="w-3.5 h-3.5" />
+            Archive
+          </button>
+          <button
+            type="button"
+            disabled={selectedCount === 0}
+            onClick={() => runBulk('delete')}
+            className="min-h-[36px] px-3 rounded-lg bg-red-600 hover:bg-red-500 text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete
+          </button>
+          <button
+            type="button"
+            onClick={exitSelect}
+            aria-label="Cancel selection"
+            className="min-w-[36px] min-h-[36px] rounded-lg hover:bg-white/10 flex items-center justify-center cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

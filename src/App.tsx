@@ -36,7 +36,7 @@ import { PWAInstallButton } from './components/PWAInstallButton';
 import { RealityCheckModal } from './components/RealityCheckModal';
 import { SettingsTab } from './components/SettingsTab';
 import { TodayTab } from './components/TodayTab';
-import { VenturesTab } from './components/VenturesTab';
+import { VenturesTab, type VentureBulkAction, type VentureSelection } from './components/VenturesTab';
 import { useEmpireData } from './hooks/useEmpireData';
 import {
   clearWorkspaceItems,
@@ -48,6 +48,10 @@ import {
   deleteCoachLog,
   deleteHabit,
   deleteProjectCascade,
+  bulkDelete,
+  closeBusiness,
+  closeProject,
+  completeTasks,
   deleteTask,
   deleteTaskFile,
   requestRealityCheckAndSave,
@@ -102,6 +106,7 @@ interface PendingConfirm {
   title: string;
   description: string;
   confirmLabel: string;
+  tone?: 'danger' | 'neutral';
   options?: ConfirmOption[];
   defaultOption?: string;
   onConfirm: (selectedOption?: string) => Promise<void>;
@@ -354,6 +359,159 @@ function EmpireWorkspace({
       onConfirm: async (selected) => {
         const mode = selected === 'delete-tasks' ? 'delete-tasks' : 'unlink';
         await deleteProjectCascade(user.uid, proj.id, mode);
+      },
+    });
+  };
+
+  const closeOptions = (openCount: number): ConfirmOption[] | undefined =>
+    openCount > 0
+      ? [
+          {
+            value: 'complete',
+            label: `Mark the ${openCount} open task(s) as done`,
+            description: 'Use this when the work is actually finished.',
+          },
+          {
+            value: 'leave',
+            label: 'Leave open tasks as they are',
+            description: 'Closes it without changing any task status.',
+          },
+        ]
+      : undefined;
+
+  const handleRequestCloseProject = (proj: Project) => {
+    const open = tasks.filter((t) => t.projectId === proj.id && t.status !== 'done').length;
+    setPendingConfirm({
+      title: `Close "${proj.name}" as finished`,
+      description:
+        open > 0
+          ? `This project still has ${open} open task(s). It will move to Archived and show as Completed once every task is done.`
+          : 'All tasks are done. The project will move to Archived and show as Completed.',
+      confirmLabel: 'Close Project',
+      tone: 'neutral',
+      options: closeOptions(open),
+      defaultOption: 'complete',
+      onConfirm: async (opt) => {
+        await closeProject(user.uid, proj, tasks, opt !== 'leave');
+      },
+    });
+  };
+
+  const handleRequestCloseBusiness = (biz: Business) => {
+    const open = tasks.filter((t) => t.businessId === biz.id && !t.isHabit && t.status !== 'done').length;
+    setPendingConfirm({
+      title: `Close "${biz.name}" as finished`,
+      description:
+        open > 0
+          ? `${biz.name} still has ${open} open task(s). The venture and all its projects will move to Archived.`
+          : `The venture and all its projects will move to Archived and show as Completed.`,
+      confirmLabel: 'Close Venture',
+      tone: 'neutral',
+      options: closeOptions(open),
+      defaultOption: 'complete',
+      onConfirm: async (opt) => {
+        await closeBusiness(user.uid, biz, projects, tasks, opt !== 'leave');
+      },
+    });
+  };
+
+  const handleVentureBulkAction = (action: VentureBulkAction, sel: VentureSelection) => {
+    const parts = [
+      sel.businessIds.length ? `${sel.businessIds.length} venture(s)` : '',
+      sel.projectIds.length ? `${sel.projectIds.length} project(s)` : '',
+      sel.taskIds.length ? `${sel.taskIds.length} task(s)` : '',
+    ].filter(Boolean);
+    const summary = parts.join(', ');
+    const selBizProjects = projects.filter((p) => sel.businessIds.includes(p.businessId));
+
+    if (action === 'delete') {
+      const projTaskCount = tasks.filter((t) => sel.projectIds.includes(t.projectId)).length;
+      setPendingConfirm({
+        title: `Delete ${summary}`,
+        description: `Permanently delete ${summary}? Deleting a venture also deletes all its projects, tasks and habits. This cannot be undone.`,
+        confirmLabel: 'Delete All',
+        options:
+          sel.projectIds.length && projTaskCount
+            ? [
+                {
+                  value: 'delete-tasks',
+                  label: `Also delete the ${projTaskCount} task(s) inside the selected projects`,
+                  description: 'Removes projects and every task in them.',
+                },
+                {
+                  value: 'unlink',
+                  label: 'Keep those tasks as unassigned',
+                  description: 'Tasks stay under their venture without a project.',
+                },
+              ]
+            : undefined,
+        defaultOption: 'delete-tasks',
+        onConfirm: async (opt) => {
+          await bulkDelete(user.uid, sel, projects, tasks, opt === 'unlink' ? 'unlink' : 'delete-tasks');
+        },
+      });
+      return;
+    }
+
+    if (action === 'archive') {
+      if (!sel.businessIds.length && !sel.projectIds.length) {
+        setPendingConfirm({
+          title: 'Nothing to archive',
+          description: 'Only ventures and projects can be archived. Use Close or Delete for tasks.',
+          confirmLabel: 'OK',
+          tone: 'neutral',
+          onConfirm: async () => undefined,
+        });
+        return;
+      }
+      setPendingConfirm({
+        title: `Archive ${summary}`,
+        description: 'Selected ventures and projects move to Archived (tasks are not changed). You can restore them anytime from Show Archived.',
+        confirmLabel: 'Archive',
+        tone: 'neutral',
+        onConfirm: async () => {
+          for (const id of sel.businessIds) await toggleBusinessActive(user.uid, id, false);
+          for (const id of sel.projectIds) await toggleProjectArchived(user.uid, id, true);
+        },
+      });
+      return;
+    }
+
+    // close
+    const affected = tasks.filter(
+      (t) =>
+        t.status !== 'done' &&
+        !t.isHabit &&
+        (sel.taskIds.includes(t.id) ||
+          sel.projectIds.includes(t.projectId) ||
+          sel.businessIds.includes(t.businessId))
+    );
+    setPendingConfirm({
+      title: `Close ${summary} as finished`,
+      description: `Selected tasks are marked done${
+        sel.businessIds.length || sel.projectIds.length ? ' and selected ventures/projects move to Archived as Completed' : ''
+      }.`,
+      confirmLabel: 'Close',
+      tone: 'neutral',
+      options:
+        (sel.businessIds.length || sel.projectIds.length) && affected.length
+          ? closeOptions(affected.length)
+          : undefined,
+      defaultOption: 'complete',
+      onConfirm: async (opt) => {
+        const completeRemaining = opt !== 'leave';
+        const taskList = completeRemaining
+          ? affected
+          : affected.filter((t) => sel.taskIds.includes(t.id));
+        await completeTasks(user.uid, taskList);
+        for (const p of [...new Set([...sel.projectIds, ...selBizProjects.map((x) => x.id)])]) {
+          const proj = projects.find((x) => x.id === p);
+          if (proj && !proj.isArchived) await toggleProjectArchived(user.uid, p, true);
+        }
+        for (const id of sel.businessIds) {
+          const biz = businesses.find((b) => b.id === id);
+          if (biz?.isActive) await toggleBusinessActive(user.uid, id, false);
+        }
       },
     });
   };
@@ -770,6 +928,9 @@ function EmpireWorkspace({
                 void toggleProjectArchived(user.uid, proj.id, !proj.isArchived)
               }
               onDeleteProject={handleRequestDeleteProject}
+              onCloseProject={handleRequestCloseProject}
+              onCloseBusiness={handleRequestCloseBusiness}
+              onBulkAction={handleVentureBulkAction}
               onAddTaskInProject={(bizId, projId, phaseHeading) => {
                 setEditingTask(null);
                 setTaskDefaults({
@@ -1002,6 +1163,7 @@ function EmpireWorkspace({
         title={pendingConfirm?.title || ''}
         description={pendingConfirm?.description || ''}
         confirmLabel={pendingConfirm?.confirmLabel || 'Delete'}
+        tone={pendingConfirm?.tone || 'danger'}
         options={pendingConfirm?.options}
         defaultOption={pendingConfirm?.defaultOption}
         onCancel={() => setPendingConfirm(null)}
